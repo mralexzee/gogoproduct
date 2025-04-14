@@ -1,7 +1,7 @@
-.PHONY: help check build run clean test deps docker fmt format
+.PHONY: help check build run clean test deps fmt format validate dockerbuild dockerall dockertest dockerfmt dockervalidate
 
 # Variables
-APP_NAME := myapp
+APP_NAME := gogoproduct
 BUILD_DIR := bin
 MAIN_PATH := ./cmd/myapp
 
@@ -17,7 +17,11 @@ help:
 	@echo "  test    - Run tests"
 	@echo "  fmt     - Format Go code"
 	@echo "  format  - Alias for fmt"
-	@echo "  docker  - Build cross-platform binaries using Docker"
+	@echo "  dockerbuild   - Build binary for current platform using Docker"
+	@echo "  dockerall     - Build binaries for multiple platforms using Docker"
+	@echo "  dockertest    - Run tests using Docker"
+	@echo "  dockerfmt     - Format Go code using Docker"
+	@echo "  dockervalidate - Run fmt, test, and build inside Docker"
 
 # Check if all required dependencies are installed
 check:
@@ -58,21 +62,54 @@ test:
 	go test ./...
 	@echo "Tests complete."
 
+# Build binary for current platform using Docker
+dockerbuild:
+	@echo "Building $(APP_NAME) for current platform using Docker..."
+	docker build --target builder-current -t $(APP_NAME)-builder-current .
+	docker create --name $(APP_NAME)-temp-current $(APP_NAME)-builder-current
+	mkdir -p $(BUILD_DIR)
+	docker cp $(APP_NAME)-temp-current:/app/bin/$(APP_NAME) $(BUILD_DIR)/
+	docker rm $(APP_NAME)-temp-current
+	@echo "Docker build complete: $(BUILD_DIR)/$(APP_NAME)"
+
 # Build cross-platform binaries using Docker
-docker:
+dockerall:
 	@echo "Building cross-platform binaries using Docker..."
-	docker build -t $(APP_NAME)-builder .
-	docker create --name $(APP_NAME)-temp $(APP_NAME)-builder
+	docker build --target builder-all -t $(APP_NAME)-builder-all .
+	docker create --name $(APP_NAME)-temp-all $(APP_NAME)-builder-all
 	rm -rf $(BUILD_DIR)/windows $(BUILD_DIR)/linux $(BUILD_DIR)/macos
-	mkdir -p $(BUILD_DIR)/windows/amd64 $(BUILD_DIR)/linux/amd64 $(BUILD_DIR)/macos/arm64
-	docker cp $(APP_NAME)-temp:/app/bin/windows/amd64/myapp.exe $(BUILD_DIR)/windows/amd64/
-	docker cp $(APP_NAME)-temp:/app/bin/linux/amd64/myapp $(BUILD_DIR)/linux/amd64/
-	docker cp $(APP_NAME)-temp:/app/bin/macos/arm64/myapp $(BUILD_DIR)/macos/arm64/
-	docker rm $(APP_NAME)-temp
+	mkdir -p $(BUILD_DIR)/windows/amd64 $(BUILD_DIR)/linux/amd64 $(BUILD_DIR)/linux/arm64 $(BUILD_DIR)/macos/arm64
+	docker cp $(APP_NAME)-temp-all:/app/bin/windows/amd64/$(APP_NAME).exe $(BUILD_DIR)/windows/amd64/
+	docker cp $(APP_NAME)-temp-all:/app/bin/linux/amd64/$(APP_NAME) $(BUILD_DIR)/linux/amd64/
+	docker cp $(APP_NAME)-temp-all:/app/bin/linux/arm64/$(APP_NAME) $(BUILD_DIR)/linux/arm64/
+	docker cp $(APP_NAME)-temp-all:/app/bin/macos/arm64/$(APP_NAME) $(BUILD_DIR)/macos/arm64/
+	docker rm $(APP_NAME)-temp-all
 	@echo "Cross-platform builds complete:"
-	@echo "  - Windows (AMD64): $(BUILD_DIR)/windows/amd64/myapp.exe"
-	@echo "  - Linux (AMD64): $(BUILD_DIR)/linux/amd64/myapp"
-	@echo "  - macOS (ARM64): $(BUILD_DIR)/macos/arm64/myapp"
+	@echo "  - macOS (ARM64): $(BUILD_DIR)/macos/arm64/$(APP_NAME) (primary platform)"
+	@echo "  - Windows (AMD64): $(BUILD_DIR)/windows/amd64/$(APP_NAME).exe"
+	@echo "  - Linux (AMD64): $(BUILD_DIR)/linux/amd64/$(APP_NAME)"
+	@echo "  - Linux (ARM64): $(BUILD_DIR)/linux/arm64/$(APP_NAME)"
+
+# Run tests using Docker
+dockertest:
+	@echo "Running tests using Docker..."
+	docker build --target tester -t $(APP_NAME)-tester .
+	docker run --rm $(APP_NAME)-tester
+	@echo "Docker tests complete."
+
+# Format Go code using Docker
+dockerfmt:
+	@echo "Formatting Go code using Docker..."
+	docker build --target formatter -t $(APP_NAME)-formatter .
+	docker run --rm -v $(PWD):/app $(APP_NAME)-formatter
+	@echo "Docker formatting complete."
+
+# Run fmt, test, and build inside Docker to validate code
+dockervalidate:
+	@echo "Validating code using Docker..."
+	docker build --target validator -t $(APP_NAME)-validator .
+	docker run --rm $(APP_NAME)-validator
+	@echo "Docker validation complete."
 
 # Format Go code
 fmt:
@@ -82,3 +119,7 @@ fmt:
 
 # Alias for fmt
 format: fmt
+
+# Format, run tests, run build to validate code
+validate: fmt test build
+	@echo "Validation complete."
