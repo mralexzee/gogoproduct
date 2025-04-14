@@ -1,0 +1,3 @@
+Always run make fmt before commiting
+Always run make test and make build before commiting
+Always run make test and make build before completing the task
