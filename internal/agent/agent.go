@@ -106,7 +106,7 @@ func (a *Agent) handleChat(msg Message) {
 	})
 
 	// Create a proper response message with a new ID that references the original
-	responseContent := fmt.Sprintf("ECHO: %s", response)
+	responseContent := fmt.Sprintf("%s", response)
 	responseMsg := Message{
 		Content:       responseContent,
 		From:          a.Persona.Name,
