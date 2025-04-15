@@ -11,74 +11,94 @@ import (
 	"goproduct/internal/memory"
 	"goproduct/internal/messaging"
 	"goproduct/internal/tracing"
+	"io"
+	"os"
 	"time"
 )
 
-func main() {
-	// Create context for the application
+// RunCLIChatApp runs the CLI chat app with the given input/output streams.
+func RunCLIChatApp(in io.Reader, out io.Writer) error {
 	ctx := context.Background()
 
-	// Initialize both logging and tracing systems
-	// Logging - for application events
-	logger := logging.File("app.log", true) // Append to log file
+	logger := logging.File("./data/app.log", true)
 	defer logger.Close()
-	logging.Init(logger) // Set as default logger
+	logging.Init(logger)
 
-	// Tracing - still used for detailed internal tracing
 	tracer, err := tracing.CreateFileTracer(
-		"./trace.log", // File path
-		5*time.Second, // 5-second flush interval
-		4096,          // 4KB buffer size
+		"./data/trace.log",
+		5*time.Second,
+		4096,
 	)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer tracer.Close()
 
-	// Log application start
 	logging.Get().Info("Application started")
 	tracer.Info("Application started")
 
-	// Create in-memory message bus
 	messageBus := messaging.NewMemoryMessageBus()
 	tracer.Info("Message bus created")
 
-	// Create runtime context with message bus
 	runtime, err := common.NewRuntimeContext(common.RuntimeOptions{
 		MessageBus: messageBus,
 	})
 	if err != nil {
-		panic(err)
+		return err
 	}
 	tracer.Info("Runtime context created")
 
-	// Create LLM for LM Studio
-	llm, err := llm.NewLMStudioLLM("http://localhost:1234/v1",
-		llm.WithLMStudioModel("gemma-3-4b-it"),
-		llm.WithLMStudioTemperature(0.7),
-		llm.WithLMStudioMaxTokens(4096),
-		llm.WithLMStudioTimeout(60),
-		llm.WithLMStudioTopP(0.9),
-		llm.WithLMStudioPresencePenalty(0.0),
-		llm.WithLMStudioFrequencyPenalty(0.0),
-	)
-	if err != nil {
-		panic(err)
+	// Check environment variables for LLM type
+	var languageModel llm.LanguageModel
+	llmType := os.Getenv("LLM_TYPE")
+
+	switch llmType {
+	case "echo":
+		// Create an Echo LLM
+		echoConfig := &llm.EchoConfig{}
+		languageModel, err = llm.NewLLM(ctx, echoConfig)
+		if err != nil {
+			return err
+		}
+		tracer.Info("EchoLLM created with delay from env LLM_DELAY")
+
+	case "exception":
+		// Create an Exception LLM
+		exceptionConfig := &llm.ExceptionConfig{}
+		languageModel, err = llm.NewLLM(ctx, exceptionConfig)
+		if err != nil {
+			return err
+		}
+		tracer.Info("ExceptionLLM created with delay from env LLM_DELAY")
+
+	default:
+		// Default to LM Studio LLM
+		languageModel, err = llm.NewLMStudioLLM("http://localhost:1234/v1",
+			llm.WithLMStudioModel("gemma-3-4b-it"),
+			llm.WithLMStudioTemperature(0.7),
+			llm.WithLMStudioMaxTokens(4096),
+			llm.WithLMStudioTimeout(60),
+			llm.WithLMStudioTopP(0.9),
+			llm.WithLMStudioPresencePenalty(0.0),
+			llm.WithLMStudioFrequencyPenalty(0.0),
+		)
+		if err != nil {
+			return err
+		}
+		tracer.Info("LMStudio LLM created")
 	}
 	tracer.Info("LLM created")
 
-	// Create file memory store
-	store, err := memory.NewFileMemoryStore("./memories.json")
+	store, err := memory.NewFileMemoryStore("./data/memories.json")
 	if err != nil {
-		panic(err)
+		return err
 	}
 	err = store.Open()
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer store.Close()
 
-	// Set memory store in runtime context
 	runtime.SetMemory(store)
 	tracer.Info("Memory store created and added to runtime context")
 
@@ -103,14 +123,16 @@ func main() {
 	})
 	err = store.Flush()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	// Create an agent persona
 	persona := agent.Persona{
 		Name: "Andy",
 		Role: "Assistant",
 		Type: "Text",
+		LanguageModels: agent.LanguageModels{
+			Default: languageModel,
+		},
 		SystemPrompt: `
 You are an AI Product Owner for a software company that creates websites, HTTP REST services, Android apps, iOS apps, Windows apps, and macOS apps. The CEO is your primary human stakeholder.
 
@@ -133,41 +155,48 @@ You are an AI Product Owner for a software company that creates websites, HTTP R
 - Politely decline requests unrelated to product development (e.g., weather updates, math solutions, personal opinions unrelated to the product).
 - When greeted informally (e.g., “Hello” or “Hey”), respond in a brief, friendly way. If the user asks about or references product matters, respond with strategic, product-focused guidance.
 `,
-		LanguageModels: agent.LanguageModels{
-			Default: llm,
-		},
 	}
 
-	// Create the agent with the persona
 	agentInstance := agent.NewAgent(persona)
 	tracer.Info("Agent created")
 
-	// Create entity adapters
-	// 1. ProductAgentEntity for the agent
 	productAgent := entity.NewProductAgentEntity(agentInstance, messageBus)
 	tracer.Info("Product agent entity created: %s (%s)", productAgent.Name(), productAgent.ID())
 
-	// 2. CliHumanEntity for the user
 	humanaEntity := entity.NewCliHumanEntity("User", messageBus)
 	tracer.Info("Human entity created: %s (%s)", humanaEntity.Name(), humanaEntity.ID())
 
-	// Start the agent entity
 	err = productAgent.Start(ctx)
 	if err != nil {
 		tracer.Error("Failed to start product agent: %v", err)
-		panic(err)
+		return err
 	}
 	tracer.Info("Product agent started")
 
-	// Create enhanced chat interface
 	chatInterface := chat.NewEnhancedChat(
 		humanaEntity,
 		productAgent,
 		messageBus,
 		tracer,
 	)
+
+	// Determine if we're in test mode by checking if input/output are not the standard streams
+	// This is more reliable than checking inside the timeout handler
+	isTestMode := in != os.Stdin || out != os.Stdout
+	chatInterface.IsTestMode = isTestMode
+	tracer.Info("Enhanced chat interface created (isTestMode=%v)", isTestMode)
 	tracer.Info("Enhanced chat interface created")
 
-	// Start the chat interface
+	// Start the chat interface with custom IO if supported
+	if ci, ok := interface{}(chatInterface).(interface {
+		StartWithIO(io.Reader, io.Writer) error
+	}); ok {
+		return ci.StartWithIO(in, out)
+	}
 	chatInterface.Start()
+	return nil
+}
+
+func main() {
+	_ = RunCLIChatApp(os.Stdin, os.Stdout)
 }

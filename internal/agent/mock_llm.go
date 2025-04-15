@@ -17,12 +17,12 @@ func (m *MockLLM) GenerateChat(ctx context.Context, messages []llm.Message) (str
 			lastMessage = msg.Content
 		}
 	}
-	return "ECHO: " + lastMessage, nil
+	return "ECHO: ECHO: " + lastMessage, nil
 }
 
 // GenerateResponse implements the LanguageModel interface
 func (m *MockLLM) GenerateResponse(ctx context.Context, prompt string) (string, error) {
-	return "ECHO: " + prompt, nil
+	return "ECHO: ECHO: " + prompt, nil
 }
 
 // Name returns the name of the mock LLM

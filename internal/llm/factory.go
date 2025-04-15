@@ -14,6 +14,8 @@ const (
 	ProviderTogetherAI  = "together"
 	ProviderLMStudio    = "lmstudio"
 	ProviderMock        = "mock"
+	ProviderEcho        = "echo"
+	ProviderException   = "exception"
 )
 
 // NewLLM creates a new LLM instance based on the provided configuration
@@ -31,6 +33,10 @@ func NewLLM(ctx context.Context, config ProviderConfig) (LanguageModel, error) {
 		return newLMStudioFromConfig(config)
 	case ProviderMock:
 		return newMockFromConfig(config)
+	case ProviderEcho:
+		return newEchoFromConfig(config)
+	case ProviderException:
+		return newExceptionFromConfig(config)
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", config.GetProvider())
 	}
@@ -61,3 +67,11 @@ var newLMStudioFromConfig func(config ProviderConfig) (LanguageModel, error)
 // newMockFromConfig creates a Mock LLM from configuration
 // Implemented in mock.go
 var newMockFromConfig func(config ProviderConfig) (LanguageModel, error)
+
+// newEchoFromConfig creates an Echo LLM from configuration
+// Implemented in mock_llms.go
+var newEchoFromConfig func(config ProviderConfig) (LanguageModel, error)
+
+// newExceptionFromConfig creates an Exception LLM from configuration
+// Implemented in mock_llms.go
+var newExceptionFromConfig func(config ProviderConfig) (LanguageModel, error)
