@@ -586,6 +586,58 @@ func (m *MemoryStore) sortRecords(records []Entry, orderBy, orderDir string) {
 	})
 }
 
+// LoadRecords loads multiple records into the store
+// If a record with the same ID exists, it's updated; otherwise, it's added
+func (m *MemoryStore) LoadRecords(records ...Entry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check for empty input
+	if len(records) == 0 {
+		return nil
+	}
+
+	// First validate that all records have IDs and there are no duplicates in the input
+	seenIDs := make(map[string]bool)
+	for i, record := range records {
+		// Validate record has an ID
+		if record.ID == "" {
+			return fmt.Errorf("record at index %d must have an ID", i)
+		}
+
+		// Check for duplicate IDs in the input
+		if seenIDs[record.ID] {
+			return fmt.Errorf("duplicate record ID found in input: %s", record.ID)
+		}
+		seenIDs[record.ID] = true
+	}
+
+	// Process all records (add new ones, update existing ones)
+	now := time.Now()
+	for _, record := range records {
+		// Check if record exists (update) or not (add)
+		_, exists := m.records[record.ID]
+
+		// Set timestamps appropriately
+		if !exists {
+			// New record: set createdAt if not set
+			if record.CreatedAt.IsZero() {
+				record.CreatedAt = now
+			}
+		}
+
+		// Always set updatedAt timestamp if not explicitly set
+		if record.UpdatedAt.IsZero() {
+			record.UpdatedAt = now
+		}
+
+		// Store the record (add or update)
+		m.records[record.ID] = record
+	}
+
+	return nil
+}
+
 // Info provides implementation-specific information about the memory store
 func (m *MemoryStore) Info() (map[string]string, error) {
 	m.mu.RLock()

@@ -717,6 +717,61 @@ func (f *FileStore) sortRecords(records []Entry, orderBy, orderDir string) {
 	})
 }
 
+// LoadRecords loads multiple records into the store
+// If a record with the same ID exists, it's updated; otherwise, it's added
+func (f *FileStore) LoadRecords(records ...Entry) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// Check for empty input
+	if len(records) == 0 {
+		return nil
+	}
+
+	// First validate that all records have IDs and there are no duplicates in the input
+	seenIDs := make(map[string]bool)
+	for i, record := range records {
+		// Validate record has an ID
+		if record.ID == "" {
+			return fmt.Errorf("record at index %d must have an ID", i)
+		}
+
+		// Check for duplicate IDs in the input
+		if seenIDs[record.ID] {
+			return fmt.Errorf("duplicate record ID found in input: %s", record.ID)
+		}
+		seenIDs[record.ID] = true
+	}
+
+	// Process all records (add new ones, update existing ones)
+	now := time.Now()
+	for _, record := range records {
+		// Check if record exists (update) or not (add)
+		_, exists := f.records[record.ID]
+
+		// Set timestamps appropriately
+		if !exists {
+			// New record: set createdAt if not set
+			if record.CreatedAt.IsZero() {
+				record.CreatedAt = now
+			}
+		}
+
+		// Always set updatedAt timestamp if not explicitly set
+		if record.UpdatedAt.IsZero() {
+			record.UpdatedAt = now
+		}
+
+		// Store the record (add or update)
+		f.records[record.ID] = record
+	}
+
+	// Mark the store as dirty since we've modified records
+	f.isDirty = true
+
+	return nil
+}
+
 // Info provides implementation-specific information about the file knowledge store
 // This method is required by the Store interface
 func (f *FileStore) Info() (map[string]string, error) {

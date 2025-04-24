@@ -11,6 +11,22 @@ import (
 	"time"
 )
 
+func setupTestFileStore(t *testing.T) (*FileStore, string) {
+	tempDir := t.TempDir()
+	storeFile := filepath.Join(tempDir, "knowledge.json")
+
+	store, err := NewFileStore(storeFile)
+	if err != nil {
+		t.Fatalf("Failed to create file store: %v", err)
+	}
+
+	if err := store.Open(); err != nil {
+		t.Fatalf("Failed to open store: %v", err)
+	}
+
+	return store, storeFile
+}
+
 func TestNewFileStore(t *testing.T) {
 	tempDir := t.TempDir()
 	storeFile := filepath.Join(tempDir, "knowledge.json")
@@ -1025,6 +1041,232 @@ func TestFileStore_DeepFilterNesting(t *testing.T) {
 	}
 	if len(results) != 3 {
 		t.Errorf("After reopen: Expected 3 results from deep filter, got %d", len(results))
+	}
+}
+
+func TestFileStore_LoadRecords(t *testing.T) {
+	store, storeFile := setupTestFileStore(t)
+	defer store.Close()
+
+	// Create test records
+	now := time.Now()
+	basicRecords := []Entry{
+		{
+			ID:          "test-load-1",
+			Category:    CategoryFact,
+			ContentType: ContentTypeText,
+			Content:     []byte("Test content 1"),
+			Importance:  ImportanceMedium,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+		{
+			ID:          "test-load-2",
+			Category:    CategoryDecision,
+			ContentType: ContentTypeJSON,
+			Content:     []byte(`{"key": "value"}`),
+			Importance:  ImportanceHigh,
+			Tags:        []string{"tag1", "tag2"},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+		{
+			ID:          "test-load-3",
+			Category:    CategoryAction,
+			ContentType: ContentTypeText,
+			Content:     []byte("Test content 3"),
+			Importance:  ImportanceLow,
+			Metadata:    map[string]string{"key": "value"},
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+	}
+
+	// Test 1: Load multiple new records
+	t.Log("Test 1: Loading multiple new records")
+	err := store.LoadRecords(basicRecords...)
+	if err != nil {
+		t.Fatalf("Failed to load records: %v", err)
+	}
+
+	// Flush to ensure data is written to disk
+	if err := store.Flush(); err != nil {
+		t.Fatalf("Failed to flush store: %v", err)
+	}
+
+	// Verify all records were added
+	for _, expected := range basicRecords {
+		actual, err := store.GetRecord(expected.ID)
+		if err != nil {
+			t.Errorf("Failed to get record %s: %v", expected.ID, err)
+			continue
+		}
+
+		// Compare records (ignoring timestamps which may be adjusted)
+		if actual.ID != expected.ID ||
+			actual.Category != expected.Category ||
+			actual.ContentType != expected.ContentType ||
+			!bytes.Equal(actual.Content, expected.Content) ||
+			actual.Importance != expected.Importance {
+			t.Errorf("Record %s does not match expected values", expected.ID)
+		}
+	}
+
+	// Test 2: Update existing records and add new ones
+	t.Log("Test 2: Updating existing records and adding new ones")
+	updateRecords := []Entry{
+		{ // Update existing record
+			ID:          "test-load-1",
+			Category:    CategoryFact,
+			ContentType: ContentTypeText,
+			Content:     []byte("Updated content 1"),
+			Importance:  ImportanceHigh, // Changed from medium
+			Tags:        []string{"updated"},
+			CreatedAt:   now,
+			UpdatedAt:   now.Add(time.Hour),
+		},
+		{ // New record
+			ID:          "test-load-4",
+			Category:    CategoryMessage,
+			ContentType: ContentTypeText,
+			Content:     []byte("New record 4"),
+			Importance:  ImportanceCritical,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		},
+	}
+
+	err = store.LoadRecords(updateRecords...)
+	if err != nil {
+		t.Fatalf("Failed to load update records: %v", err)
+	}
+
+	// Flush to ensure data is written to disk
+	if err := store.Flush(); err != nil {
+		t.Fatalf("Failed to flush store: %v", err)
+	}
+
+	// Verify updates
+	updatedRecord, err := store.GetRecord("test-load-1")
+	if err != nil {
+		t.Fatalf("Failed to get updated record: %v", err)
+	}
+
+	// Check if record was properly updated
+	if string(updatedRecord.Content) != "Updated content 1" {
+		t.Errorf("Content not updated. Expected 'Updated content 1', got '%s'", string(updatedRecord.Content))
+	}
+
+	if updatedRecord.Importance != ImportanceHigh {
+		t.Errorf("Importance not updated. Expected %d, got %d", ImportanceHigh, updatedRecord.Importance)
+	}
+
+	// Verify new record was added
+	newRecord, err := store.GetRecord("test-load-4")
+	if err != nil {
+		t.Fatalf("Failed to get new record: %v", err)
+	}
+
+	if string(newRecord.Content) != "New record 4" {
+		t.Errorf("New record content incorrect. Expected 'New record 4', got '%s'", string(newRecord.Content))
+	}
+
+	// Test 3: Error cases
+	t.Log("Test 3: Testing error cases")
+	// Test with record missing ID
+	recordsWithMissingID := []Entry{
+		{
+			ID:          "test-load-5",
+			Category:    CategoryFact,
+			ContentType: ContentTypeText,
+			Content:     []byte("Valid record"),
+		},
+		{
+			// Missing ID
+			Category:    CategoryFact,
+			ContentType: ContentTypeText,
+			Content:     []byte("Invalid record - no ID"),
+		},
+	}
+
+	err = store.LoadRecords(recordsWithMissingID...)
+	if err == nil {
+		t.Error("Expected error when loading record with missing ID, got nil")
+	}
+
+	// Verify none of the records were added
+	_, err = store.GetRecord("test-load-5")
+	if err == nil {
+		t.Error("Record with ID 'test-load-5' should not have been added due to batch failure")
+	}
+
+	// Test with duplicate IDs in the input
+	duplicateIDRecords := []Entry{
+		{
+			ID:          "test-load-dup",
+			Category:    CategoryFact,
+			ContentType: ContentTypeText,
+			Content:     []byte("First record"),
+		},
+		{
+			ID:          "test-load-dup", // Same ID
+			Category:    CategoryFact,
+			ContentType: ContentTypeText,
+			Content:     []byte("Second record with same ID"),
+		},
+	}
+
+	err = store.LoadRecords(duplicateIDRecords...)
+	if err == nil {
+		t.Error("Expected error when loading records with duplicate IDs, got nil")
+	}
+
+	// Test with empty slice
+	err = store.LoadRecords()
+	if err != nil {
+		t.Errorf("Expected no error with empty records slice, got: %v", err)
+	}
+
+	// Test 4: Persistence - close and reopen store
+	t.Log("Test 4: Testing persistence by closing and reopening store")
+	if err := store.Close(); err != nil {
+		t.Fatalf("Failed to close store: %v", err)
+	}
+
+	// Reopen the store
+	newStore, err := NewFileStore(storeFile)
+	if err != nil {
+		t.Fatalf("Failed to create new file store: %v", err)
+	}
+
+	if err := newStore.Open(); err != nil {
+		t.Fatalf("Failed to open new store: %v", err)
+	}
+	defer newStore.Close()
+
+	// Verify records persisted correctly
+	for _, id := range []string{"test-load-1", "test-load-2", "test-load-3", "test-load-4"} {
+		record, err := newStore.GetRecord(id)
+		if err != nil {
+			t.Errorf("Failed to get record %s after reopening: %v", id, err)
+			continue
+		}
+
+		// Just verify IDs for simplicity
+		if record.ID != id {
+			t.Errorf("Record ID mismatch after reopening. Expected %s, got %s", id, record.ID)
+		}
+	}
+
+	// Verify the updated content is still there
+	updatedRecord, err = newStore.GetRecord("test-load-1")
+	if err != nil {
+		t.Fatalf("Failed to get updated record after reopening: %v", err)
+	}
+
+	if string(updatedRecord.Content) != "Updated content 1" {
+		t.Errorf("Content not preserved after reopening. Expected 'Updated content 1', got '%s'",
+			string(updatedRecord.Content))
 	}
 }
 

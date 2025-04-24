@@ -102,6 +102,7 @@ type Store interface {
 	RestoreRecord(id string) error                // Un-delete a record
 	PurgeRecord(id string) error                  // Permanent deletion
 	SearchRecords(filter Filter) ([]Entry, error) // Generic, full search
+	LoadRecords(records ...Entry) error           // Bulk load records, updating existing ones and adding new ones
 	Open() error                                  // Open/Load datastore
 	Flush() error                                 // Write any pending data to the storage, no-op in some providers such as knowledge
 	Close() error                                 // Closes storage (files/db connections)
