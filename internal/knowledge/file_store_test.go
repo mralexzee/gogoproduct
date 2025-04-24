@@ -35,8 +35,8 @@ func TestNewFileStore(t *testing.T) {
 	if info["implementation"] != "FileStore" {
 		t.Errorf("Expected implementation to be FileStore, got %s", info["implementation"])
 	}
-	if info["filename"] != storeFile {
-		t.Errorf("Expected filename to be %s, got %s", storeFile, info["filename"])
+	if info["file_path"] != storeFile {
+		t.Errorf("Expected file_path to be %s, got %s", storeFile, info["file_path"])
 	}
 
 	if err := store.Close(); err != nil {
