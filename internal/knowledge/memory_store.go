@@ -1,10 +1,12 @@
 package knowledge
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -182,20 +184,17 @@ func (m *MemoryStore) SearchRecords(filter Filter) ([]Entry, error) {
 
 	results := make([]Entry, 0)
 
-	// Process each record
-	for _, record := range m.records {
-		// Skip deleted records unless explicitly included
-		if filter.IncludeDeleted || filter.OnlyDeleted {
-			continue
-		}
+	// Process active records first (unless we only want deleted records)
+	if !filter.OnlyDeleted {
+		for _, record := range m.records {
+			// Apply filter
+			if filter.RootGroup.Operator != "" && !m.matchesFilter(record, filter.RootGroup) {
+				continue
+			}
 
-		// Apply filter
-		if filter.RootGroup.Operator != "" && !m.matchesFilter(record, filter.RootGroup) {
-			continue
+			// Add to results
+			results = append(results, record)
 		}
-
-		// Add to results
-		results = append(results, record)
 	}
 
 	// Process deleted records if needed
@@ -317,6 +316,39 @@ func (m *MemoryStore) matchesCondition(record Entry, condition Condition) bool {
 		return m.matchesMetadata(record.Metadata, condition)
 	}
 
+	// Special handling for time fields - direct comparison without reflection
+	switch condition.Field {
+	case "CreatedAt":
+		if condTime, ok := condition.Value.(time.Time); ok {
+			return m.compareValues(record.CreatedAt, condition.Operator, condTime)
+		}
+	case "UpdatedAt":
+		if condTime, ok := condition.Value.(time.Time); ok {
+			return m.compareValues(record.UpdatedAt, condition.Operator, condTime)
+		}
+	case "ExpiresAt":
+		if condTime, ok := condition.Value.(time.Time); ok {
+			return m.compareValues(record.ExpiresAt, condition.Operator, condTime)
+		}
+	case "Content":
+		// Special handling for Content ([]byte)
+		switch v := condition.Value.(type) {
+		case string:
+			if condition.Operator == "=" {
+				return string(record.Content) == v
+			} else if condition.Operator == "CONTAINS" {
+				return strings.Contains(string(record.Content), v)
+			}
+		case []byte:
+			if condition.Operator == "=" {
+				return bytes.Equal(record.Content, v)
+			} else if condition.Operator == "CONTAINS" {
+				return bytes.Contains(record.Content, v)
+			}
+		}
+		// For other value types or operators, fallback to standard handling
+	}
+
 	// Get field value using reflection
 	value := reflect.ValueOf(record).FieldByName(condition.Field)
 	if !value.IsValid() {
@@ -390,6 +422,60 @@ func (m *MemoryStore) matchesSlice(field reflect.Value, condition Condition) boo
 
 // compareValues compares two values based on the operator
 func (m *MemoryStore) compareValues(fieldValue interface{}, operator string, conditionValue interface{}) bool {
+	// Special handling for time comparisons
+	fieldTime, fieldIsTime := fieldValue.(time.Time)
+	valueTime, valueIsTime := conditionValue.(time.Time)
+
+	if fieldIsTime && valueIsTime {
+		switch operator {
+		case "=":
+			return fieldTime.Equal(valueTime)
+		case "!=":
+			return !fieldTime.Equal(valueTime)
+		case ">":
+			return fieldTime.After(valueTime)
+		case "<":
+			return fieldTime.Before(valueTime)
+		case ">=":
+			return fieldTime.After(valueTime) || fieldTime.Equal(valueTime)
+		case "<=":
+			return fieldTime.Before(valueTime) || fieldTime.Equal(valueTime)
+		case "CONTAINS":
+			return false // Time cannot contain another time
+		default:
+			return false
+		}
+	}
+
+	// Special handling for []byte content
+	fieldBytes, fieldIsBytes := fieldValue.([]byte)
+	valueBytes, valueIsBytes := conditionValue.([]byte)
+	valueString, valueIsString := conditionValue.(string)
+
+	if fieldIsBytes {
+		// Compare byte content with string or bytes
+		fieldString := string(fieldBytes)
+		var valueStr string
+		if valueIsBytes {
+			valueStr = string(valueBytes)
+		} else if valueIsString {
+			valueStr = valueString
+		} else {
+			valueStr = fmt.Sprintf("%v", conditionValue)
+		}
+
+		switch operator {
+		case "=":
+			return fieldString == valueStr
+		case "!=":
+			return fieldString != valueStr
+		case "CONTAINS":
+			return strings.Contains(fieldString, valueStr)
+		default:
+			// For other operators, continue with normal comparison
+		}
+	}
+
 	// Convert to comparable strings for simple comparison
 	fieldStr := fmt.Sprintf("%v", fieldValue)
 	valueStr := fmt.Sprintf("%v", conditionValue)
@@ -399,6 +485,8 @@ func (m *MemoryStore) compareValues(fieldValue interface{}, operator string, con
 		return fieldStr == valueStr
 	case "!=":
 		return fieldStr != valueStr
+	case "CONTAINS":
+		return strings.Contains(fieldStr, valueStr)
 	case ">":
 		// Try numeric comparison
 		var fieldNum, valueNum float64

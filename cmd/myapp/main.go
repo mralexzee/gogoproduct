@@ -104,10 +104,24 @@ func RunCLIChatApp(in io.Reader, out io.Writer) error {
 	}
 	enhancedTracer.Info("LLM created")
 
-	store, err := knowledge.NewFileStore("./data/memories.json")
-	if err != nil {
-		return err
+	// Use appropriate knowledge store based on test mode
+	var store knowledge.Store
+
+	if isTestMode {
+		// Use in-memory knowledge store for tests
+		store, err = knowledge.NewMemoryStore()
+		if err != nil {
+			return err
+		}
+	} else {
+		// Use file-based knowledge store for normal operation
+		store, err = knowledge.NewFileStore("./data/memories.json")
+		if err != nil {
+			return err
+		}
 	}
+
+	// Open the store
 	err = store.Open()
 	if err != nil {
 		return err
