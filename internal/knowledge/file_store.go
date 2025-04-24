@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -384,53 +386,131 @@ func (f *FileStore) matchesFilter(record Entry, group FilterGroup) bool {
 
 // matchesCondition checks if a record matches a specific condition
 func (f *FileStore) matchesCondition(record Entry, condition Condition) bool {
-	// Get field value using reflection
-	recordValue := reflect.ValueOf(record)
-	field := recordValue.FieldByName(condition.Field)
+	// Special handling for metadata
+	if condition.Field == "Metadata" {
+		return f.matchesMetadata(record.Metadata, condition)
+	}
+
+	// Special handling for time fields with direct access (more accurate than reflection)
+	switch condition.Field {
+	case "CreatedAt":
+		if valueTime, ok := condition.Value.(time.Time); ok {
+			return f.compareValues(record.CreatedAt, condition.Operator, valueTime)
+		}
+	case "UpdatedAt":
+		if valueTime, ok := condition.Value.(time.Time); ok {
+			return f.compareValues(record.UpdatedAt, condition.Operator, valueTime)
+		}
+	case "ExpiresAt":
+		if valueTime, ok := condition.Value.(time.Time); ok {
+			return f.compareValues(record.ExpiresAt, condition.Operator, valueTime)
+		}
+	case "Content":
+		// Special handling for Content which is []byte
+		if valueBytes, ok := condition.Value.([]byte); ok {
+			return f.compareValues(record.Content, condition.Operator, valueBytes)
+		} else if valueStr, ok := condition.Value.(string); ok {
+			return f.compareValues(record.Content, condition.Operator, []byte(valueStr))
+		}
+	case "Tags":
+		// Direct handling for Tags which is []string
+		if condition.Operator == "CONTAINS" {
+			if valueStr, ok := condition.Value.(string); ok {
+				for _, tag := range record.Tags {
+					if tag == valueStr {
+						return true
+					}
+				}
+				return false
+			}
+		}
+	}
+
+	// Get field value with reflection for other fields
+	rValue := reflect.ValueOf(record)
+	field := rValue.FieldByName(condition.Field)
 
 	// Check if field exists
 	if !field.IsValid() {
 		return false
 	}
 
-	// Special handling for map fields
-	if condition.Field == "Metadata" && field.Kind() == reflect.Map {
-		return f.matchesMetadata(record.Metadata, condition)
-	}
-
-	// Special handling for slice fields
-	if field.Kind() == reflect.Slice {
+	// Special handling for slice fields (References, SubjectIDs)
+	if field.Kind() == reflect.Slice && condition.Operator == "CONTAINS" {
 		return f.matchesSlice(field, condition)
 	}
 
-	// Handle regular field comparison
+	// Compare field value with condition value
 	return f.compareValues(field.Interface(), condition.Operator, condition.Value)
 }
 
 // matchesMetadata checks if metadata matches a condition
 func (f *FileStore) matchesMetadata(metadata map[string]string, condition Condition) bool {
+	// Handle nil or empty metadata
+	if metadata == nil {
+		metadata = make(map[string]string)
+	}
+
+	// Handle various operators
 	switch condition.Operator {
-	case "CONTAINS_KEY":
-		key, ok := condition.Value.(string)
-		if !ok {
-			return false
-		}
-		_, exists := metadata[key]
-		return exists
-	case "CONTAINS_KEY_VALUE":
-		kvMap, ok := condition.Value.(map[string]string)
-		if !ok {
-			return false
-		}
-		for k, v := range kvMap {
-			metaVal, exists := metadata[k]
-			if !exists || metaVal != v {
-				return false
+	case "=":
+		// Check if metadata contains all key-value pairs from condition
+		if condMap, ok := condition.Value.(map[string]string); ok {
+			// Empty condition map matches any metadata (including empty)
+			if len(condMap) == 0 {
+				return len(metadata) == 0
 			}
+
+			// Check if all keys in condMap exist in metadata with matching values
+			for k, v := range condMap {
+				metaVal, exists := metadata[k]
+				if !exists || metaVal != v {
+					return false
+				}
+			}
+			return true
 		}
-		return true
-	default:
 		return false
+
+	case "!=":
+		// Check if metadata doesn't match all key-value pairs from condition
+		if condMap, ok := condition.Value.(map[string]string); ok {
+			// Empty condition map matches any non-empty metadata
+			if len(condMap) == 0 {
+				return len(metadata) > 0
+			}
+
+			// Check if any key in condMap doesn't exist in metadata or has a different value
+			for k, v := range condMap {
+				metaVal, exists := metadata[k]
+				if !exists || metaVal != v {
+					return true
+				}
+			}
+			return false
+		}
+		return true // If condition value is not a map, it can't match metadata
+
+	case "CONTAINS":
+		// Check if metadata contains the key-value pair
+		if condMap, ok := condition.Value.(map[string]string); ok && len(condMap) > 0 {
+			for k, v := range condMap {
+				metaVal, exists := metadata[k]
+				if exists && metaVal == v {
+					return true // Found at least one matching key-value pair
+				}
+			}
+			return false // No matching key-value pairs found
+		}
+		// If single key provided as string, check if it exists
+		if keyStr, ok := condition.Value.(string); ok {
+			_, exists := metadata[keyStr]
+			return exists
+		}
+		return false
+
+	default:
+		return false // Unsupported operator for metadata
 	}
 }
 
@@ -454,15 +534,90 @@ func (f *FileStore) matchesSlice(field reflect.Value, condition Condition) bool 
 
 // compareValues compares two values based on the operator
 func (f *FileStore) compareValues(fieldValue interface{}, operator string, conditionValue interface{}) bool {
-	// Convert to comparable strings for simple comparison
-	fieldStr := fmt.Sprintf("%v", fieldValue)
-	valueStr := fmt.Sprintf("%v", conditionValue)
+	// Special handling for time comparisons
+	fieldTime, fieldIsTime := fieldValue.(time.Time)
+	valueTime, valueIsTime := conditionValue.(time.Time)
+	if fieldIsTime && valueIsTime {
+		switch operator {
+		case "=":
+			return fieldTime.Equal(valueTime)
+		case "!=":
+			return !fieldTime.Equal(valueTime)
+		case ">":
+			return fieldTime.After(valueTime)
+		case "<":
+			return fieldTime.Before(valueTime)
+		case ">=":
+			return fieldTime.After(valueTime) || fieldTime.Equal(valueTime)
+		case "<=":
+			return fieldTime.Before(valueTime) || fieldTime.Equal(valueTime)
+		case "CONTAINS":
+			return false // Time values don't support CONTAINS
+		default:
+			return false
+		}
+	}
 
+	// Special handling for byte slice comparisons
+	fieldBytes, fieldIsBytes := fieldValue.([]byte)
+	valueBytes, valueIsBytes := conditionValue.([]byte)
+	if fieldIsBytes && valueIsBytes {
+		switch operator {
+		case "=":
+			return bytes.Equal(fieldBytes, valueBytes)
+		case "!=":
+			return !bytes.Equal(fieldBytes, valueBytes)
+		case "CONTAINS":
+			return bytes.Contains(fieldBytes, valueBytes)
+		default:
+			// For other operators, compare the string representation
+			fieldStr := string(fieldBytes)
+			valueStr := string(valueBytes)
+			return f.compareStringValues(fieldStr, operator, valueStr)
+		}
+	}
+
+	// If field is []byte but condition is string
+	if fieldIsBytes {
+		valueStr, valueIsStr := conditionValue.(string)
+		if valueIsStr {
+			switch operator {
+			case "=":
+				return string(fieldBytes) == valueStr
+			case "!=":
+				return string(fieldBytes) != valueStr
+			case "CONTAINS":
+				return bytes.Contains(fieldBytes, []byte(valueStr))
+			default:
+				// For other operators, compare the string representation
+				fieldStr := string(fieldBytes)
+				return f.compareStringValues(fieldStr, operator, valueStr)
+			}
+		}
+	}
+
+	// Handle string comparisons
+	fieldStr, fieldIsStr := fieldValue.(string)
+	valueStr, valueIsStr := conditionValue.(string)
+	if fieldIsStr && valueIsStr {
+		return f.compareStringValues(fieldStr, operator, valueStr)
+	}
+
+	// Default comparison using string representation for all other types
+	fieldStrRepr := fmt.Sprintf("%v", fieldValue)
+	valueStrRepr := fmt.Sprintf("%v", conditionValue)
+	return f.compareStringValues(fieldStrRepr, operator, valueStrRepr)
+}
+
+// compareStringValues compares two string values based on the operator
+func (f *FileStore) compareStringValues(fieldStr, operator, valueStr string) bool {
 	switch operator {
 	case "=":
 		return fieldStr == valueStr
 	case "!=":
 		return fieldStr != valueStr
+	case "CONTAINS":
+		return strings.Contains(fieldStr, valueStr)
 	case ">":
 		// Try numeric comparison
 		var fieldNum, valueNum float64
