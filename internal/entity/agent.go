@@ -1,7 +1,7 @@
 package entity
 
 import (
-	"goproduct/internal/memory"
+	"goproduct/internal/knowledge"
 )
 
 // Agent extends the base Entity interface with AI agent-specific capabilities
@@ -20,8 +20,8 @@ type Agent interface {
 	AddCapability(cap string) error // Add a capability to this agent
 
 	// Memory-specific methods (extending MemoryAccess)
-	PersonalMemories() ([]memory.MemoryRecord, error) // Get only memories owned by this agent
-	SharedMemories() ([]memory.MemoryRecord, error)   // Get memories shared with this agent
+	PersonalMemories() ([]knowledge.Entry, error) // Get only memories owned by this agent
+	SharedMemories() ([]knowledge.Entry, error)   // Get memories shared with this agent
 
 	// Task management
 	CurrentTasks() []string           // Get IDs of tasks currently assigned to this agent

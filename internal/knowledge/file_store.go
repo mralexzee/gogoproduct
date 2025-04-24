@@ -1,4 +1,4 @@
-package memory
+package knowledge
 
 import (
 	"encoding/json"
@@ -13,63 +13,63 @@ import (
 )
 
 // FileStore data structure
-type fileStoreData struct {
-	Records     map[string]MemoryRecord `json:"records"`
-	DeletedRecs map[string]MemoryRecord `json:"deleted_records"`
+type fileData struct {
+	Records     map[string]Entry `json:"records"`
+	DeletedRecs map[string]Entry `json:"deleted_records"`
 }
 
-// FileMemoryStore implements MemoryStore interface using a JSON file for storage
-type FileMemoryStore struct {
+// FileStore implements Store interface using a JSON file for storage
+type FileStore struct {
 	filename    string
-	records     map[string]MemoryRecord
-	deletedRecs map[string]MemoryRecord
+	records     map[string]Entry
+	deletedRecs map[string]Entry
 	isDirty     bool
 	mu          sync.RWMutex
 }
 
-// NewFileMemoryStore creates a new file-based memory store
-func NewFileMemoryStore(filename string) (*FileMemoryStore, error) {
+// NewFileStore creates new file-based knowledge store
+func NewFileStore(filename string) (*FileStore, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(filename)
 	if dir != "." {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create directory for memory file: %w", err)
+			return nil, fmt.Errorf("failed to create directory for knowledge file: %w", err)
 		}
 	}
 
-	store := &FileMemoryStore{
+	store := &FileStore{
 		filename:    filename,
-		records:     make(map[string]MemoryRecord),
-		deletedRecs: make(map[string]MemoryRecord),
+		records:     make(map[string]Entry),
+		deletedRecs: make(map[string]Entry),
 		isDirty:     false,
 	}
 
 	return store, nil
 }
 
-// Open loads the memory store from file
-func (f *FileMemoryStore) Open() error {
+// Open loads the knowledge store from file
+func (f *FileStore) Open() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// Check if file exists
 	if _, err := os.Stat(f.filename); os.IsNotExist(err) {
 		// File doesn't exist yet, initialize empty store
-		f.records = make(map[string]MemoryRecord)
-		f.deletedRecs = make(map[string]MemoryRecord)
+		f.records = make(map[string]Entry)
+		f.deletedRecs = make(map[string]Entry)
 		return nil
 	}
 
 	// Read file
 	data, err := os.ReadFile(f.filename)
 	if err != nil {
-		return fmt.Errorf("failed to read memory file: %w", err)
+		return fmt.Errorf("failed to read knowledge file: %w", err)
 	}
 
 	// Unmarshal data
-	var fileData fileStoreData
+	var fileData fileData
 	if err := json.Unmarshal(data, &fileData); err != nil {
-		return fmt.Errorf("failed to parse memory file: %w", err)
+		return fmt.Errorf("failed to parse knowledge file: %w", err)
 	}
 
 	// Copy data to store
@@ -81,7 +81,7 @@ func (f *FileMemoryStore) Open() error {
 }
 
 // Close flushes data to disk and releases resources
-func (f *FileMemoryStore) Close() error {
+func (f *FileStore) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -92,7 +92,7 @@ func (f *FileMemoryStore) Close() error {
 		}
 	}
 
-	// Clear in-memory data
+	// Clear in-knowledge data
 	f.records = nil
 	f.deletedRecs = nil
 
@@ -100,7 +100,7 @@ func (f *FileMemoryStore) Close() error {
 }
 
 // Flush writes current data to disk if needed
-func (f *FileMemoryStore) Flush() error {
+func (f *FileStore) Flush() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -111,9 +111,9 @@ func (f *FileMemoryStore) Flush() error {
 }
 
 // internal flush method (must be called with lock held)
-func (f *FileMemoryStore) flush() error {
+func (f *FileStore) flush() error {
 	// Create storage structure
-	fileData := fileStoreData{
+	fileData := fileData{
 		Records:     f.records,
 		DeletedRecs: f.deletedRecs,
 	}
@@ -121,37 +121,37 @@ func (f *FileMemoryStore) flush() error {
 	// Marshal to JSON with pretty printing
 	data, err := json.MarshalIndent(fileData, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal memory data: %w", err)
+		return fmt.Errorf("failed to marshal knowledge data: %w", err)
 	}
 
 	// Write to temp file
 	tempFile := f.filename + ".tmp"
 	if err := os.WriteFile(tempFile, data, 0644); err != nil {
-		return fmt.Errorf("failed to write memory data to temp file: %w", err)
+		return fmt.Errorf("failed to write knowledge data to temp file: %w", err)
 	}
 
 	// Rename temp file to actual file (atomic operation)
 	if err := os.Rename(tempFile, f.filename); err != nil {
-		return fmt.Errorf("failed to save memory file: %w", err)
+		return fmt.Errorf("failed to save knowledge file: %w", err)
 	}
 
 	f.isDirty = false
 	return nil
 }
 
-// AddRecord adds a new memory record
-func (f *FileMemoryStore) AddRecord(record MemoryRecord) error {
+// AddRecord adds a new knowledge record
+func (f *FileStore) AddRecord(record Entry) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// Validate record
 	if record.ID == "" {
-		return errors.New("memory record must have an ID")
+		return errors.New("knowledge record must have an ID")
 	}
 
 	// Check if record already exists
 	if _, exists := f.records[record.ID]; exists {
-		return fmt.Errorf("memory record with ID %s already exists", record.ID)
+		return fmt.Errorf("knowledge record with ID %s already exists", record.ID)
 	}
 
 	// Set timestamps if not set
@@ -170,8 +170,8 @@ func (f *FileMemoryStore) AddRecord(record MemoryRecord) error {
 	return nil
 }
 
-// GetRecord retrieves a memory record by ID
-func (f *FileMemoryStore) GetRecord(id string) (MemoryRecord, error) {
+// GetRecord retrieves a knowledge record by ID
+func (f *FileStore) GetRecord(id string) (Entry, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
@@ -180,17 +180,17 @@ func (f *FileMemoryStore) GetRecord(id string) (MemoryRecord, error) {
 		return record, nil
 	}
 
-	return MemoryRecord{}, fmt.Errorf("memory record with ID %s not found", id)
+	return Entry{}, fmt.Errorf("knowledge record with ID %s not found", id)
 }
 
-// UpdateRecord updates an existing memory record
-func (f *FileMemoryStore) UpdateRecord(record MemoryRecord) error {
+// UpdateRecord updates an existing knowledge record
+func (f *FileStore) UpdateRecord(record Entry) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// Check if record exists
 	if _, exists := f.records[record.ID]; !exists {
-		return fmt.Errorf("memory record with ID %s not found", record.ID)
+		return fmt.Errorf("knowledge record with ID %s not found", record.ID)
 	}
 
 	// Update timestamp
@@ -204,14 +204,14 @@ func (f *FileMemoryStore) UpdateRecord(record MemoryRecord) error {
 }
 
 // DeleteRecord marks a record as deleted (soft delete)
-func (f *FileMemoryStore) DeleteRecord(id string) error {
+func (f *FileStore) DeleteRecord(id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// Check if record exists
 	record, exists := f.records[id]
 	if !exists {
-		return fmt.Errorf("memory record with ID %s not found", id)
+		return fmt.Errorf("knowledge record with ID %s not found", id)
 	}
 
 	// Move record to deleted records
@@ -223,14 +223,14 @@ func (f *FileMemoryStore) DeleteRecord(id string) error {
 }
 
 // RestoreRecord restores a deleted record
-func (f *FileMemoryStore) RestoreRecord(id string) error {
+func (f *FileStore) RestoreRecord(id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// Check if record exists in deleted records
 	record, exists := f.deletedRecs[id]
 	if !exists {
-		return fmt.Errorf("deleted memory record with ID %s not found", id)
+		return fmt.Errorf("deleted knowledge record with ID %s not found", id)
 	}
 
 	// Move record back to active records
@@ -242,7 +242,7 @@ func (f *FileMemoryStore) RestoreRecord(id string) error {
 }
 
 // PurgeRecord permanently deletes a record
-func (f *FileMemoryStore) PurgeRecord(id string) error {
+func (f *FileStore) PurgeRecord(id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -251,7 +251,7 @@ func (f *FileMemoryStore) PurgeRecord(id string) error {
 	_, existsDeleted := f.deletedRecs[id]
 
 	if !existsActive && !existsDeleted {
-		return fmt.Errorf("memory record with ID %s not found", id)
+		return fmt.Errorf("knowledge record with ID %s not found", id)
 	}
 
 	// Remove from appropriate map
@@ -266,15 +266,15 @@ func (f *FileMemoryStore) PurgeRecord(id string) error {
 }
 
 // SearchRecords searches for records based on the provided filter
-func (f *FileMemoryStore) SearchRecords(filter MemoryFilter) ([]MemoryRecord, error) {
+func (f *FileStore) SearchRecords(filter Filter) ([]Entry, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
 	// Create result slice
-	var results []MemoryRecord
+	var results []Entry
 
 	// Determine which records to search
-	recordsToSearch := make(map[string]MemoryRecord)
+	recordsToSearch := make(map[string]Entry)
 
 	// Add active records if not OnlyDeleted
 	if !filter.OnlyDeleted {
@@ -307,7 +307,7 @@ func (f *FileMemoryStore) SearchRecords(filter MemoryFilter) ([]MemoryRecord, er
 		// Handle offset
 		if filter.Offset > 0 {
 			if filter.Offset >= len(results) {
-				return []MemoryRecord{}, nil
+				return []Entry{}, nil
 			}
 			results = results[filter.Offset:]
 		}
@@ -322,7 +322,7 @@ func (f *FileMemoryStore) SearchRecords(filter MemoryFilter) ([]MemoryRecord, er
 }
 
 // matchesFilter checks if a record matches the filter group
-func (f *FileMemoryStore) matchesFilter(record MemoryRecord, group FilterGroup) bool {
+func (f *FileStore) matchesFilter(record Entry, group FilterGroup) bool {
 	// Default to AND if no operator specified
 	operator := group.Operator
 	if operator == "" {
@@ -383,7 +383,7 @@ func (f *FileMemoryStore) matchesFilter(record MemoryRecord, group FilterGroup) 
 }
 
 // matchesCondition checks if a record matches a specific condition
-func (f *FileMemoryStore) matchesCondition(record MemoryRecord, condition Condition) bool {
+func (f *FileStore) matchesCondition(record Entry, condition Condition) bool {
 	// Get field value using reflection
 	recordValue := reflect.ValueOf(record)
 	field := recordValue.FieldByName(condition.Field)
@@ -408,7 +408,7 @@ func (f *FileMemoryStore) matchesCondition(record MemoryRecord, condition Condit
 }
 
 // matchesMetadata checks if metadata matches a condition
-func (f *FileMemoryStore) matchesMetadata(metadata map[string]string, condition Condition) bool {
+func (f *FileStore) matchesMetadata(metadata map[string]string, condition Condition) bool {
 	switch condition.Operator {
 	case "CONTAINS_KEY":
 		key, ok := condition.Value.(string)
@@ -435,7 +435,7 @@ func (f *FileMemoryStore) matchesMetadata(metadata map[string]string, condition 
 }
 
 // matchesSlice checks if a slice field matches a condition
-func (f *FileMemoryStore) matchesSlice(field reflect.Value, condition Condition) bool {
+func (f *FileStore) matchesSlice(field reflect.Value, condition Condition) bool {
 	switch condition.Operator {
 	case "CONTAINS":
 		value := condition.Value
@@ -453,7 +453,7 @@ func (f *FileMemoryStore) matchesSlice(field reflect.Value, condition Condition)
 }
 
 // compareValues compares two values based on the operator
-func (f *FileMemoryStore) compareValues(fieldValue interface{}, operator string, conditionValue interface{}) bool {
+func (f *FileStore) compareValues(fieldValue interface{}, operator string, conditionValue interface{}) bool {
 	// Convert to comparable strings for simple comparison
 	fieldStr := fmt.Sprintf("%v", fieldValue)
 	valueStr := fmt.Sprintf("%v", conditionValue)
@@ -509,7 +509,7 @@ func (f *FileMemoryStore) compareValues(fieldValue interface{}, operator string,
 }
 
 // sortRecords sorts records by the specified field and direction
-func (f *FileMemoryStore) sortRecords(records []MemoryRecord, orderBy, orderDir string) {
+func (f *FileStore) sortRecords(records []Entry, orderBy, orderDir string) {
 	sort.Slice(records, func(i, j int) bool {
 		// Get field values using reflection
 		iValue := reflect.ValueOf(records[i]).FieldByName(orderBy)
@@ -560,4 +560,23 @@ func (f *FileMemoryStore) sortRecords(records []MemoryRecord, orderBy, orderDir 
 			return iStr > jStr
 		}
 	})
+}
+
+// Info provides implementation-specific information about the file knowledge store
+// This method is required by the Store interface
+func (f *FileStore) Info() (map[string]string, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	info := make(map[string]string)
+
+	// Add basic implementation info
+	info["implementation"] = "FileStore"
+	info["file_path"] = f.filename
+	info["file_name"] = filepath.Base(f.filename)
+	info["record_count"] = fmt.Sprintf("%d", len(f.records))
+	info["deleted_count"] = fmt.Sprintf("%d", len(f.deletedRecs))
+	info["is_dirty"] = fmt.Sprintf("%t", f.isDirty)
+
+	return info, nil
 }

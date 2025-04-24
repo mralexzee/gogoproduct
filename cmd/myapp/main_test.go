@@ -12,7 +12,7 @@ import (
 var mockLLMClient bool = true
 
 // Sleep duration between test messages to allow processing
-const testSleepDuration = 2 * time.Second
+const testSleepDuration = 300 * time.Millisecond
 
 // To support this test, RunCLIChatApp must be defined in main.go or another imported package.
 // It should accept io.Reader and io.Writer for input/output redirection.
@@ -30,7 +30,7 @@ func TestChatApp_OutOfOfficeFallback(t *testing.T) {
 	}()
 
 	// Wait for the app to initialize
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Send messages with delay to allow timeout responses to be generated
 	messages := []string{"Hello", "bye", "exit()"}
@@ -49,7 +49,7 @@ func TestChatApp_OutOfOfficeFallback(t *testing.T) {
 	pipeWriter.Close()
 
 	// Wait for final processing
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Check the output for expected patterns
 	output := out.String()
