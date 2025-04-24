@@ -33,29 +33,29 @@ const (
 
 // Reference represents a reference to another knowledge record
 type Reference struct {
-	ID   string
-	Type string
+	ID   string `json:"id" xml:"id" yaml:"id"`       // Unique identifier of the referenced record
+	Type string `json:"type" xml:"type" yaml:"type"` // Type of the referenced record
 }
 
 // Entry represents a single knowledge entry in the system
 type Entry struct {
-	ID          string            // Unique identifier
-	Category    string            // High-level category: "fact", "message", "decision", "action"
-	ContentType string            // MIME type: "application/json", "text/plain", etc.
-	Content     []byte            // The actual content in binary form
-	Importance  int               // Importance level: 1 (low) to 3 (high)
-	CreatedAt   time.Time         // When this knowledge was created
-	UpdatedAt   time.Time         // When this knowledge was last modified
-	ExpiresAt   time.Time         // When this knowledge will expire
-	SourceID    string            // Where this knowledge came from
-	SourceType  string            // Type of source: "chat", "api", "observation", etc.
-	OwnerID     string            // Who created/owns this knowledge
-	OwnerType   string            // Type of owner: "agent", "human", "company", "product", "tool"
-	SubjectIDs  []string          // Who/what this knowledge is about (can be multiple)
-	SubjectType string            // Type of subject: "human", "project", "company", etc.
-	Tags        []string          // Quick categorization for indexing/retrieval
-	References  []Reference       // Other knowledge IDs this knowledge references
-	Metadata    map[string]string // Flexible key-value pairs for additional context
+	ID          string            `json:"id" xml:"id" yaml:"id"`                            // Unique identifier
+	Category    string            `json:"category" xml:"category" yaml:"category"`          // High-level category: "fact", "message", "decision", "action"
+	ContentType string            `json:"contentType" xml:"contentType" yaml:"contentType"` // MIME type: "application/json", "text/plain", etc.
+	Content     []byte            `json:"content" xml:"content" yaml:"content"`             // The actual content in binary form
+	Importance  int               `json:"importance" xml:"importance" yaml:"importance"`    // Importance level: 1 (low) to 3 (high)
+	CreatedAt   time.Time         `json:"createdAt" xml:"createdAt" yaml:"createdAt"`       // When this knowledge was created
+	UpdatedAt   time.Time         `json:"updatedAt" xml:"updatedAt" yaml:"updatedAt"`       // When this knowledge was last modified
+	ExpiresAt   time.Time         `json:"expiresAt" xml:"expiresAt" yaml:"expiresAt"`       // When this knowledge will expire
+	SourceID    string            `json:"sourceId" xml:"sourceId" yaml:"sourceId"`          // Where this knowledge came from
+	SourceType  string            `json:"sourceType" xml:"sourceType" yaml:"sourceType"`    // Type of source: "chat", "api", "observation", etc.
+	OwnerID     string            `json:"ownerId" xml:"ownerId" yaml:"ownerId"`             // Who created/owns this knowledge
+	OwnerType   string            `json:"ownerType" xml:"ownerType" yaml:"ownerType"`       // Type of owner: "agent", "human", "company", "product", "tool"
+	SubjectIDs  []string          `json:"subjectIds" xml:"subjectIds" yaml:"subjectIds"`    // Who/what this knowledge is about (can be multiple)
+	SubjectType string            `json:"subjectType" xml:"subjectType" yaml:"subjectType"` // Type of subject: "human", "project", "company", etc.
+	Tags        []string          `json:"tags" xml:"tags" yaml:"tags"`                      // Quick categorization for indexing/retrieval
+	References  []Reference       `json:"references" xml:"references" yaml:"references"`    // Other knowledge IDs this knowledge references
+	Metadata    map[string]string `json:"metadata" xml:"metadata" yaml:"metadata"`          // Flexible key-value pairs for additional context
 }
 
 // FilterOperator defines the type of logical operation to perform
@@ -70,27 +70,27 @@ const (
 
 // Condition represents a single filter condition
 type Condition struct {
-	Field    string      // Name of the field to filter on
-	Operator string      // Comparison operator: "=", "!=", ">", "<", "IN", "CONTAINS", etc.
-	Value    interface{} // Value to compare against
+	Field    string      `json:"field" xml:"field" yaml:"field"`          // Name of the field to filter on
+	Operator string      `json:"operator" xml:"operator" yaml:"operator"` // Comparison operator: "=", "!=", ">", "<", "IN", "CONTAINS", etc.
+	Value    interface{} `json:"value" xml:"value" yaml:"value"`          // Value to compare against
 }
 
 // FilterGroup represents a group of conditions with a logical operator
 type FilterGroup struct {
-	Operator   FilterOperator // Logical operator for this group
-	Conditions []Condition    // List of conditions in this group
-	Groups     []FilterGroup  // Nested groups for complex queries (parentheses)
+	Operator   FilterOperator `json:"operator" xml:"operator" yaml:"operator"`       // Logical operator for this group
+	Conditions []Condition    `json:"conditions" xml:"conditions" yaml:"conditions"` // List of conditions in this group
+	Groups     []FilterGroup  `json:"groups" xml:"groups" yaml:"groups"`             // Nested groups for complex queries (parentheses)
 }
 
 // Filter defines the query structure for searching knowledge records
 type Filter struct {
-	RootGroup      FilterGroup // The root filter group
-	Limit          int         // Maximum number of results to return
-	Offset         int         // Number of results to skip
-	OrderBy        string      // Field to order results by
-	OrderDir       string      // Order direction: "ASC" or "DESC"
-	IncludeDeleted bool        // Whether to include soft-deleted records
-	OnlyDeleted    bool        // Whether to show only deleted records
+	RootGroup      FilterGroup `json:"rootGroup" xml:"rootGroup" yaml:"rootGroup"`                // The root filter group
+	Limit          int         `json:"limit" xml:"limit" yaml:"limit"`                            // Maximum number of results to return
+	Offset         int         `json:"offset" xml:"offset" yaml:"offset"`                         // Number of results to skip
+	OrderBy        string      `json:"orderBy" xml:"orderBy" yaml:"orderBy"`                      // Field to order results by
+	OrderDir       string      `json:"orderDir" xml:"orderDir" yaml:"orderDir"`                   // Order direction: "ASC" or "DESC"
+	IncludeDeleted bool        `json:"includeDeleted" xml:"includeDeleted" yaml:"includeDeleted"` // Whether to include soft-deleted records
+	OnlyDeleted    bool        `json:"onlyDeleted" xml:"onlyDeleted" yaml:"onlyDeleted"`          // Whether to show only deleted records
 }
 
 // Store interface for knowledge storage
