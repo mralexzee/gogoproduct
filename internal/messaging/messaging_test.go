@@ -53,7 +53,7 @@ func TestMemoryMessageBus(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, "Hello entity2", content)
 			assert.Equal(t, entity1ID, msg.SenderID)
-		case <-time.After(time.Second):
+		case <-time.After(200 * time.Millisecond):
 			t.Fatal("Timeout waiting for message")
 		}
 
@@ -61,7 +61,7 @@ func TestMemoryMessageBus(t *testing.T) {
 		select {
 		case <-entity3Received:
 			t.Fatal("Entity3 should not have received a message")
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(50 * time.Millisecond):
 			// This is expected - no message should arrive
 		}
 	})
@@ -85,7 +85,7 @@ func TestMemoryMessageBus(t *testing.T) {
 			content, err := msg.TextContent()
 			assert.NoError(t, err)
 			assert.Equal(t, "Hello group", content)
-		case <-time.After(time.Second):
+		case <-time.After(200 * time.Millisecond):
 			t.Fatal("Timeout waiting for message to entity2")
 		}
 
@@ -94,7 +94,7 @@ func TestMemoryMessageBus(t *testing.T) {
 			content, err := msg.TextContent()
 			assert.NoError(t, err)
 			assert.Equal(t, "Hello group", content)
-		case <-time.After(time.Second):
+		case <-time.After(200 * time.Millisecond):
 			t.Fatal("Timeout waiting for message to entity3")
 		}
 	})
@@ -112,7 +112,7 @@ func TestMemoryMessageBus(t *testing.T) {
 			content, err := msg.TextContent()
 			assert.NoError(t, err)
 			assert.Equal(t, "Broadcast message", content)
-		case <-time.After(time.Second):
+		case <-time.After(200 * time.Millisecond):
 			t.Fatal("Timeout waiting for broadcast message to entity2")
 		}
 
@@ -121,7 +121,7 @@ func TestMemoryMessageBus(t *testing.T) {
 			content, err := msg.TextContent()
 			assert.NoError(t, err)
 			assert.Equal(t, "Broadcast message", content)
-		case <-time.After(time.Second):
+		case <-time.After(200 * time.Millisecond):
 			t.Fatal("Timeout waiting for broadcast message to entity3")
 		}
 
@@ -129,7 +129,7 @@ func TestMemoryMessageBus(t *testing.T) {
 		select {
 		case <-entity1Received:
 			t.Fatal("Entity1 should not receive its own broadcast")
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(50 * time.Millisecond):
 			// This is expected behavior
 		}
 	})
@@ -149,7 +149,7 @@ func TestMemoryMessageBus(t *testing.T) {
 		select {
 		case <-entity2Received:
 			t.Fatal("Entity2 should not have received a message after unsubscribing")
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(50 * time.Millisecond):
 			// This is expected - no message should arrive
 		}
 	})

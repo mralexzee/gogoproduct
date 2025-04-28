@@ -11,9 +11,9 @@ import (
 
 // TestEchoLLMDelayed tests the chat application with a delayed-responding EchoLLM
 func TestEchoLLMDelayed(t *testing.T) {
-	// Set environment variables for the LLM
+	// Set environment variables for the LLM with reduced delay for testing
 	os.Setenv("LLM_TYPE", "echo")
-	os.Setenv("LLM_DELAY", "2")
+	os.Setenv("LLM_DELAY", "0.2")
 	defer func() {
 		os.Unsetenv("LLM_TYPE")
 		os.Unsetenv("LLM_DELAY")
@@ -35,7 +35,7 @@ func TestEchoLLMDelayed(t *testing.T) {
 	}()
 
 	// Wait for the app to initialize
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Send messages
 	messages := []string{"Hello", "Tell me about the roadmap", "exit()"}
@@ -46,15 +46,15 @@ func TestEchoLLMDelayed(t *testing.T) {
 			t.Fatalf("Failed to write message: %v", err)
 		}
 
-		// Wait for the delayed response (a bit more than the 2-second delay)
-		time.Sleep(3 * time.Second)
+		// Wait for the delayed response (reduced timeout for tests)
+		time.Sleep(300 * time.Millisecond)
 	}
 
 	// Close the writer to signal EOF
 	pipeWriter.Close()
 
 	// Wait for final processing
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Check the output for expected patterns
 	output := out.String()

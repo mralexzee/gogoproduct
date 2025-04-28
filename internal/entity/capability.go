@@ -1,7 +1,7 @@
 package entity
 
 import (
-	"goproduct/internal/memory"
+	"goproduct/internal/knowledge"
 )
 
 // MessageHandler is a capability for entities that can process messages
@@ -19,13 +19,13 @@ type ToolUser interface {
 	AvailableTools() []string
 }
 
-// MemoryAccess is a capability for entities that can access the memory system
+// MemoryAccess is a capability for entities that can access the knowledge system
 type MemoryAccess interface {
 	// ReadMemory retrieves memories based on a filter
-	ReadMemory(filter memory.MemoryFilter) ([]memory.MemoryRecord, error)
+	ReadMemory(filter knowledge.Filter) ([]knowledge.Entry, error)
 
-	// WriteMemory stores a new memory
-	WriteMemory(record memory.MemoryRecord) error
+	// WriteMemory stores a new knowledge
+	WriteMemory(record knowledge.Entry) error
 }
 
 // TeamMember is a capability for entities that can be part of teams

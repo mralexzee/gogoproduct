@@ -18,8 +18,8 @@ type Component string
 const (
 	// ComponentMessaging identifies the messaging system
 	ComponentMessaging Component = "messaging"
-	// ComponentMemory identifies the memory system
-	ComponentMemory Component = "memory"
+	// ComponentMemory identifies the knowledge system
+	ComponentMemory Component = "knowledge"
 	// ComponentEntity identifies the entity system
 	ComponentEntity Component = "entity"
 	// ComponentAgent identifies the agent system
