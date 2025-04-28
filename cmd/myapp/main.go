@@ -6,9 +6,9 @@ import (
 	"goproduct/internal/chat"
 	"goproduct/internal/common"
 	"goproduct/internal/entity"
+	"goproduct/internal/knowledge"
 	"goproduct/internal/llm"
 	"goproduct/internal/logging"
-	"goproduct/internal/memory"
 	"goproduct/internal/messaging"
 	"goproduct/internal/tracing"
 	"io"
@@ -24,21 +24,36 @@ func RunCLIChatApp(in io.Reader, out io.Writer) error {
 	defer logger.Close()
 	logging.Init(logger)
 
-	tracer, err := tracing.CreateFileTracer(
-		"./data/trace.log",
-		5*time.Second,
-		4096,
-	)
-	if err != nil {
-		return err
+	// Determine if we're in test mode by checking if input/output are not the standard streams
+	isTestMode := in != os.Stdin || out != os.Stdout
+
+	var enhancedTracer *tracing.EnhancedTracer
+	var err error
+
+	if isTestMode {
+		// Use in-memory tracer for tests to avoid file dependency
+		enhancedTracer = tracing.NewMemoryTracer()
+	} else {
+		// Create directories if they don't exist
+		os.MkdirAll("./data", 0755)
+
+		// Use file tracer for normal operation
+		enhancedTracer, err = tracing.CreateFileTracer(
+			"./data/trace.log",
+			5*time.Second,
+			4096,
+		)
+		if err != nil {
+			return err
+		}
 	}
-	defer tracer.Close()
+	defer enhancedTracer.Close()
 
 	logging.Get().Info("Application started")
-	tracer.Info("Application started")
+	enhancedTracer.Info("Application started")
 
 	messageBus := messaging.NewMemoryMessageBus()
-	tracer.Info("Message bus created")
+	enhancedTracer.Info("Message bus created")
 
 	runtime, err := common.NewRuntimeContext(common.RuntimeOptions{
 		MessageBus: messageBus,
@@ -46,7 +61,7 @@ func RunCLIChatApp(in io.Reader, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	tracer.Info("Runtime context created")
+	enhancedTracer.Info("Runtime context created")
 
 	// Check environment variables for LLM type
 	var languageModel llm.LanguageModel
@@ -60,7 +75,7 @@ func RunCLIChatApp(in io.Reader, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		tracer.Info("EchoLLM created with delay from env LLM_DELAY")
+		enhancedTracer.Info("EchoLLM created with delay from env LLM_DELAY")
 
 	case "exception":
 		// Create an Exception LLM
@@ -69,7 +84,7 @@ func RunCLIChatApp(in io.Reader, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		tracer.Info("ExceptionLLM created with delay from env LLM_DELAY")
+		enhancedTracer.Info("ExceptionLLM created with delay from env LLM_DELAY")
 
 	default:
 		// Default to LM Studio LLM
@@ -85,14 +100,28 @@ func RunCLIChatApp(in io.Reader, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		tracer.Info("LMStudio LLM created")
+		enhancedTracer.Info("LMStudio LLM created")
 	}
-	tracer.Info("LLM created")
+	enhancedTracer.Info("LLM created")
 
-	store, err := memory.NewFileMemoryStore("./data/memories.json")
-	if err != nil {
-		return err
+	// Use appropriate knowledge store based on test mode
+	var store knowledge.Store
+
+	if isTestMode {
+		// Use in-memory knowledge store for tests
+		store, err = knowledge.NewMemoryStore()
+		if err != nil {
+			return err
+		}
+	} else {
+		// Use file-based knowledge store for normal operation
+		store, err = knowledge.NewFileStore("./data/memories.json")
+		if err != nil {
+			return err
+		}
 	}
+
+	// Open the store
 	err = store.Open()
 	if err != nil {
 		return err
@@ -100,14 +129,14 @@ func RunCLIChatApp(in io.Reader, out io.Writer) error {
 	defer store.Close()
 
 	runtime.SetMemory(store)
-	tracer.Info("Memory store created and added to runtime context")
+	enhancedTracer.Info("Memory store created and added to runtime context")
 
-	store.AddRecord(memory.MemoryRecord{
+	store.AddRecord(knowledge.Entry{
 		ID:          "1",
-		Category:    memory.CategoryFact,
-		ContentType: memory.ContentTypeText,
+		Category:    knowledge.CategoryFact,
+		ContentType: knowledge.ContentTypeText,
 		Content:     []byte("This is a fact."),
-		Importance:  memory.ImportanceHigh,
+		Importance:  knowledge.ImportanceHigh,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 		ExpiresAt:   time.Now().Add(30 * time.Minute),
@@ -118,7 +147,7 @@ func RunCLIChatApp(in io.Reader, out io.Writer) error {
 		SubjectIDs:  []string{"1"},
 		SubjectType: "agent",
 		Tags:        []string{"fact"},
-		References:  []memory.Reference{},
+		References:  []knowledge.Reference{},
 		Metadata:    map[string]string{"source": "chat"},
 	})
 	err = store.Flush()
@@ -158,34 +187,32 @@ You are an AI Product Owner for a software company that creates websites, HTTP R
 	}
 
 	agentInstance := agent.NewAgent(persona)
-	tracer.Info("Agent created")
+	enhancedTracer.Info("Agent created")
 
 	productAgent := entity.NewProductAgentEntity(agentInstance, messageBus)
-	tracer.Info("Product agent entity created: %s (%s)", productAgent.Name(), productAgent.ID())
+	enhancedTracer.Info("Product agent entity created: %s (%s)", productAgent.Name(), productAgent.ID())
 
 	humanaEntity := entity.NewCliHumanEntity("User", messageBus)
-	tracer.Info("Human entity created: %s (%s)", humanaEntity.Name(), humanaEntity.ID())
+	enhancedTracer.Info("Human entity created: %s (%s)", humanaEntity.Name(), humanaEntity.ID())
 
 	err = productAgent.Start(ctx)
 	if err != nil {
-		tracer.Error("Failed to start product agent: %v", err)
+		enhancedTracer.Error("Failed to start product agent: %v", err)
 		return err
 	}
-	tracer.Info("Product agent started")
+	enhancedTracer.Info("Product agent started")
 
 	chatInterface := chat.NewEnhancedChat(
 		humanaEntity,
 		productAgent,
 		messageBus,
-		tracer,
+		enhancedTracer,
 	)
 
-	// Determine if we're in test mode by checking if input/output are not the standard streams
-	// This is more reliable than checking inside the timeout handler
-	isTestMode := in != os.Stdin || out != os.Stdout
+	// Set test mode in the chat interface
 	chatInterface.IsTestMode = isTestMode
-	tracer.Info("Enhanced chat interface created (isTestMode=%v)", isTestMode)
-	tracer.Info("Enhanced chat interface created")
+	enhancedTracer.Info("Enhanced chat interface created (isTestMode=%v)", isTestMode)
+	enhancedTracer.Info("Enhanced chat interface created")
 
 	// Start the chat interface with custom IO if supported
 	if ci, ok := interface{}(chatInterface).(interface {

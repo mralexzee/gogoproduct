@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// MemoryMessageBus implements MessageBus using in-memory structures
+// MemoryMessageBus implements MessageBus using in-knowledge structures
 type MemoryMessageBus struct {
 	subscriptions map[string]MessageHandler
 	groups        map[string]*Group
@@ -24,7 +24,7 @@ type Group struct {
 	Members map[string]bool
 }
 
-// NewMemoryMessageBus creates a new in-memory message bus
+// NewMemoryMessageBus creates a new in-knowledge message bus
 func NewMemoryMessageBus() *MemoryMessageBus {
 	return &MemoryMessageBus{
 		subscriptions: make(map[string]MessageHandler),
@@ -34,7 +34,7 @@ func NewMemoryMessageBus() *MemoryMessageBus {
 	}
 }
 
-// NewMemoryMessageBusWithTracer creates a new in-memory message bus with a custom tracer
+// NewMemoryMessageBusWithTracer creates a new in-knowledge message bus with a custom tracer
 func NewMemoryMessageBusWithTracer(tracer tracing.Tracer) *MemoryMessageBus {
 	return &MemoryMessageBus{
 		subscriptions: make(map[string]MessageHandler),

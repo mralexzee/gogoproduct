@@ -52,8 +52,8 @@ func TestAgentChat(t *testing.T) {
 	}
 	agent := NewAgent(persona)
 
-	// Create context with timeout for safety
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// Create context with shorter timeout for tests
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	// Start the agent
@@ -90,7 +90,7 @@ func TestAgentChat(t *testing.T) {
 		if response.Content != expectedPrefix {
 			t.Errorf("Expected response content to be '%s', got '%s'", expectedPrefix, response.Content)
 		}
-	case <-time.After(10 * time.Second): // Increased timeout to accommodate the 5s sleep
+	case <-time.After(1 * time.Second): // Reduced timeout for tests
 		t.Fatal("Timed out waiting for response")
 	}
 

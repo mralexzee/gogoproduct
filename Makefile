@@ -59,7 +59,7 @@ clean:
 # Run tests
 test:
 	@echo "Running tests..."
-	go test ./...
+	go test -v -timeout 60s ./...
 	@echo "Tests complete."
 
 # Build binary for current platform using Docker
@@ -121,5 +121,5 @@ fmt:
 format: fmt
 
 # Format, run tests, run build to validate code
-validate: fmt test build
+validate: fmt build test
 	@echo "Validation complete."

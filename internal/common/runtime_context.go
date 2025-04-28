@@ -1,20 +1,20 @@
 package common
 
 import (
-	"goproduct/internal/memory"
+	"goproduct/internal/knowledge"
 	"goproduct/internal/messaging"
 	"sync"
 )
 
 type RuntimeContext struct {
 	_ops        RuntimeOptions
-	_memory     memory.MemoryStore
+	_memory     knowledge.Store
 	_messageBus messaging.MessageBus
 	_sync       *sync.Mutex
 }
 
 type RuntimeOptions struct {
-	Memory     memory.MemoryStore
+	Memory     knowledge.Store
 	MessageBus messaging.MessageBus
 }
 
@@ -28,21 +28,21 @@ func NewRuntimeContext(opt RuntimeOptions) (*RuntimeContext, error) {
 	if opt.MessageBus != nil {
 		rv._messageBus = opt.MessageBus
 	} else {
-		// Create a default in-memory message bus if none provided
+		// Create a default in-knowledge message bus if none provided
 		rv._messageBus = messaging.NewMemoryMessageBus()
 	}
 
 	return rv, nil
 }
 
-func (r *RuntimeContext) GetMemory() (memory.MemoryStore, error) {
+func (r *RuntimeContext) GetMemory() (knowledge.Store, error) {
 	r._sync.Lock()
 	defer r._sync.Unlock()
 
 	return r._memory, nil
 }
 
-func (r *RuntimeContext) SetMemory(m memory.MemoryStore) error {
+func (r *RuntimeContext) SetMemory(m knowledge.Store) error {
 	r._sync.Lock()
 	defer r._sync.Unlock()
 
